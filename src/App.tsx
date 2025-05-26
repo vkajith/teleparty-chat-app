@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { webSocketService } from './services/webSocket';
-import { WebSocketCallbacks, TypingMessageData, AppState } from './types';
+import { WebSocketCallbacks } from './types';
 import { SessionChatMessage } from 'teleparty-websocket-lib';
+
+type AppState = 'initial' | 'creating' | 'joining' | 'in-room';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('initial');
@@ -27,7 +29,8 @@ const App: React.FC = () => {
         setMessages(prev => [...prev, message]);
       },
       
-      onTypingUpdate: (data: TypingMessageData) => {
+      onTypingUpdate: (data: any) => {
+        // Handle typing data properly with the correct interface
         setOthersTyping(data.anyoneTyping);
         setTypingUsers(data.usersTyping || []);
       },
@@ -68,7 +71,7 @@ const App: React.FC = () => {
     return () => {
       webSocketService.disconnect();
     };
-  }, [appState, roomId]);
+  }, []);
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -88,7 +91,7 @@ const App: React.FC = () => {
         } catch (error) {
           // Silently handle typing presence errors
         }
-      }, 3000);
+      }, 3000); // Increased timeout to 3 seconds
     }
     return () => {
       if (typingTimeoutRef.current) {
@@ -125,14 +128,14 @@ const App: React.FC = () => {
 
   const handleJoinRoom = async () => {
     if (!nickname.trim() || !roomId.trim()) return;
+    
     setAppState('joining');
     setConnectionError('');
     
     try {
       await webSocketService.joinRoom(roomId, nickname);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to join room. Please check the room ID and try again.';
-      setConnectionError(errorMessage);
+      setConnectionError(error instanceof Error ? error.message : 'Failed to join room. Please check the room ID and try again.');
       setAppState('initial');
     }
   };
@@ -154,6 +157,7 @@ const App: React.FC = () => {
   const handleMessageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessageInput(e.target.value);
     
+    // Handle typing indicator
     if (!isTyping && e.target.value.trim()) {
       setIsTyping(true);
       try {
@@ -188,7 +192,9 @@ const App: React.FC = () => {
   const copyRoomId = async () => {
     try {
       await navigator.clipboard.writeText(currentRoomId);
+      // Could add a toast notification here
     } catch (error) {
+      // Fallback for browsers without clipboard API
       const textArea = document.createElement('textarea');
       textArea.value = currentRoomId;
       document.body.appendChild(textArea);
@@ -211,6 +217,7 @@ const App: React.FC = () => {
       return 'Someone is typing...';
     }
     
+    // Filter out current user from typing users
     const otherTypingUsers = typingUsers.filter(userId => 
       userId !== webSocketService.getCurrentNickname()
     );
