@@ -43,6 +43,41 @@ yarn start
 
 The application will be available at `http://localhost:3000`.
 
+## Deployment to GitHub Pages
+
+1. Add the `homepage` field to your `package.json`:
+```json
+{
+  "homepage": "https://yourusername.github.io/teleparty-chat-app"
+}
+```
+
+2. Install the `gh-pages` package:
+```bash
+npm install --save-dev gh-pages
+# or
+yarn add --dev gh-pages
+```
+
+3. Add deployment scripts to your `package.json`:
+```json
+{
+  "scripts": {
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build"
+  }
+}
+```
+
+4. Deploy to GitHub Pages:
+```bash
+npm run deploy
+# or
+yarn deploy
+```
+
+Your app will be available at `https://yourusername.github.io/teleparty-chat-app`
+
 ## Usage
 
 ### Creating a Room
@@ -54,7 +89,7 @@ The application will be available at `http://localhost:3000`.
 ### Joining a Room
 1. Enter your nickname
 2. Select an avatar
-2. Enter the Room ID
+3. Enter the Room ID
 4. Click "Join Room"
 
 ### Chat Features
