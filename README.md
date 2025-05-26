@@ -1,187 +1,105 @@
-# Teleparty WebSocket Library Usage
+# Teleparty Chat
 
-This document shows how the app correctly integrates with `teleparty-websocket-lib` based on the provided API examples.
+A real-time chat application built with React and WebSocket technology, allowing users to create and join chat rooms for seamless communication.
 
-## 🔌 Library Integration
+## Features
 
-### Import Statement
-```typescript
-import { 
-  TelepartyClient, 
-  SocketEventHandler, 
-  SocketMessageTypes,
-  SessionChatMessage
-} from 'teleparty-websocket-lib';
+- 🚀 Real-time messaging with WebSocket
+- 👥 Create and join chat rooms
+- 🎨 Custom user avatars
+- ✨ Typing indicators
+- 📱 Responsive design
+- 🔒 Room ID sharing
+- 💬 Message grouping by user
+- 🎯 System messages
+- 🌈 Modern UI with smooth animations
+
+## Prerequisites
+
+- Node.js (v14 or higher)
+- npm or yarn
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/teleparty-chat-app.git
+cd teleparty-chat-app
 ```
 
-### Client Initialization
-```typescript
-const eventHandler: SocketEventHandler = {
-    onConnectionReady: () => {
-        console.log("Connection has been established");
-        // Handle connection ready state
-    },
-    onClose: () => {
-        console.log("Socket has been closed");
-        // Handle connection close
-    },
-    onMessage: (message) => {
-        console.log("Received message:", message);
-        // Process incoming messages
-    }
-};
-
-const client = new TelepartyClient(eventHandler);
+2. Install dependencies:
+```bash
+npm install
+# or
+yarn install
 ```
 
-### Creating a Chat Room
-```typescript
-// Create room with nickname and optional user icon
-let roomId = await client.createChatRoom(nickname, userIcon);
-console.log('Room created with ID:', roomId);
+3. Start the development server:
+```bash
+npm start
+# or
+yarn start
 ```
 
-### Joining a Chat Room
-```typescript
-// Join existing room
-await client.joinChatRoom(roomId, nickname, userIcon);
-console.log('Joined room:', roomId);
+The application will be available at `http://localhost:3000`.
+
+## Usage
+
+### Creating a Room
+1. Enter your nickname
+2. Select an avatar
+3. Click "Create New Room"
+4. Share the generated Room ID with others
+
+### Joining a Room
+1. Enter your nickname
+2. Select an avatar
+2. Enter the Room ID
+4. Click "Join Room"
+
+### Chat Features
+- Messages are grouped by user
+- User messages appear on the right
+- Other users' messages appear on the left
+- System messages are centered
+- Typing indicators show when others are typing
+- Copy Room ID button for easy sharing
+- Leave Room button to exit the chat
+
+## Tech Stack
+
+- React
+- TypeScript
+- WebSocket
+- CSS3
+- Font Awesome Icons
+
+## Project Structure
+
+```
+src/
+├── components/         # React components
+├── services/          # WebSocket service
+├── types/            # TypeScript type definitions
+├── constants/        # Application constants
+├── App.tsx           # Main application component
+└── App.css           # Global styles
 ```
 
-## 📨 Message Handling
+## Contributing
 
-### Sending Chat Messages
-```typescript
-client.sendMessage(SocketMessageTypes.SEND_MESSAGE, {
-    body: 'Hello world'
-});
-```
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-### Updating Typing Presence
-```typescript
-// Start typing
-client.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, {
-    typing: true
-});
+## License
 
-// Stop typing
-client.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, {
-    typing: false
-});
-```
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-### Receiving Messages
-```typescript
-const eventHandler: SocketEventHandler = {
-    onConnectionReady: () => {
-        // Connection established
-    },
-    onClose: () => {
-        // Connection closed
-    },
-    onMessage: (message) => {
-        // Check message type and process accordingly
-        if (message.type === SocketMessageTypes.SEND_MESSAGE) {
-            const chatMessage = message.data as SessionChatMessage;
-            displayChatMessage(chatMessage);
-        } else if (message.type === SocketMessageTypes.SET_TYPING_PRESENCE) {
-            const typingData = message.data;
-            updateTypingIndicator(typingData);
-        }
-    }
-};
-```
+## Acknowledgments
 
-## 🏗 App Implementation
-
-### WebSocket Service Layer
-The app implements a service layer (`websocketService.ts`) that:
-
-1. **Wraps the TelepartyClient** with a clean interface
-2. **Handles connection lifecycle** (ready, close, error)
-3. **Processes different message types** automatically
-4. **Provides error handling** and recovery
-5. **Manages state synchronization** with React components
-
-### Key Differences from Mock Implementation
-
-| Feature | Mock Version | Real Library |
-|---------|-------------|--------------|
-| **Initialization** | `new TelepartyClient()` then `connect()` | `new TelepartyClient(eventHandler)` |
-| **Room Creation** | `createRoom(nickname)` | `createChatRoom(nickname, userIcon)` |
-| **Room Joining** | `joinRoom(roomId, nickname)` | `joinChatRoom(roomId, nickname, userIcon)` |
-| **Connection Events** | `onOpen()` | `onConnectionReady()` |
-| **Message Structure** | Direct SessionChatMessage | Wrapped with `type` and `data` |
-
-### React Integration
-```typescript
-// Component state updates based on WebSocket events
-const callbacks: WebSocketCallbacks = {
-  onMessage: (message: SessionChatMessage) => {
-    setMessages(prev => [...prev, message]);
-  },
-  onConnectionChange: (connected: boolean) => {
-    setIsConnected(connected);
-  },
-  onRoomCreated: (roomId: string) => {
-    setCurrentRoomId(roomId);
-    setAppState('in-room');
-  }
-  // ... other callbacks
-};
-
-webSocketService.initialize(callbacks);
-```
-
-## 🔧 Error Handling
-
-### Connection Errors
-```typescript
-try {
-  const roomId = await client.createChatRoom(nickname, userIcon);
-  // Success handling
-} catch (error) {
-  console.error('Failed to create room:', error);
-  // Show user-friendly error message
-}
-```
-
-### Message Sending Errors
-```typescript
-try {
-  client.sendMessage(SocketMessageTypes.SEND_MESSAGE, {
-    body: messageText
-  });
-} catch (error) {
-  console.error('Failed to send message:', error);
-  // Retry or show error to user
-}
-```
-
-## 📋 Complete Flow Example
-
-```typescript
-// 1. Initialize client with event handler
-const eventHandler: SocketEventHandler = {
-  onConnectionReady: () => setConnected(true),
-  onClose: () => setConnected(false),
-  onMessage: (message) => handleMessage(message)
-};
-
-const client = new TelepartyClient(eventHandler);
-
-// 2. Create or join room
-const roomId = await client.createChatRoom("John", "👤");
-
-// 3. Send messages
-client.sendMessage(SocketMessageTypes.SEND_MESSAGE, {
-  body: "Hello everyone!"
-});
-
-// 4. Handle typing
-client.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, {
-  typing: true
-});
-```
-
-This implementation correctly follows the teleparty-websocket-lib API patterns and provides a robust, production-ready chat application.
+- Built with [Create React App](https://create-react-app.dev/)
+- Icons by [Font Awesome](https://fontawesome.com/)
+- WebSocket implementation using [teleparty-websocket-lib](https://github.com/yourusername/teleparty-websocket-lib)
