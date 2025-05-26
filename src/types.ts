@@ -1,4 +1,4 @@
-import { SessionChatMessage } from 'teleparty-websocket-lib';
+import { MessageList, SessionChatMessage } from 'teleparty-websocket-lib';
 
 // Define TypingMessageData interface locally since it's not exported from the library
 export interface TypingMessageData {
@@ -12,7 +12,7 @@ export interface WebSocketCallbacks {
   onTypingUpdate: (data: TypingMessageData) => void;
   onConnectionChange: (connected: boolean) => void;
   onRoomCreated: (roomId: string) => void;
-  onRoomJoined: () => void;
+  onRoomJoined: (messageList: MessageList) => void;
   onError: (error: string) => void;
   onPreviousMessages?: (messages: SessionChatMessage[]) => void;
 }

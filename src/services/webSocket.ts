@@ -3,7 +3,8 @@ import {
   TelepartyClient, 
   SocketEventHandler, 
   SocketMessageTypes,
-  SessionChatMessage
+  SessionChatMessage,
+  MessageList
 } from 'teleparty-websocket-lib';
 import { TypingMessageData } from '../types';
 
@@ -15,7 +16,7 @@ interface WebSocketCallbacks {
   onTypingUpdate: (data: TypingMessageData) => void;
   onConnectionChange: (connected: boolean) => void;
   onRoomCreated: (roomId: string) => void;
-  onRoomJoined: () => void;
+  onRoomJoined: (messageList: MessageList) => void;
   onError: (error: string) => void;
 }
 
@@ -34,9 +35,7 @@ class WebSocketService {
   private readonly CONNECTION_TIMEOUT_MS = 10000;
   private readonly MAX_NICKNAME_LENGTH = 50;
 
-  constructor() {
-    console.log('WebSocketService initialized');
-  }
+  constructor() {}
 
   /**
    * Wait for connection to be ready with timeout
@@ -77,11 +76,7 @@ class WebSocketService {
     if (!roomId?.trim()) {
       throw new Error('Room ID is required and cannot be empty');
     }
-    
-    const cleanRoomId = roomId.trim();
-    console.log('Room ID validation:', { original: roomId, cleaned: cleanRoomId });
-    
-    return cleanRoomId;
+    return roomId.trim();
   }
 
   /**
@@ -98,8 +93,6 @@ class WebSocketService {
       throw new Error(`Nickname is too long (max ${this.MAX_NICKNAME_LENGTH} characters)`);
     }
     
-    console.log('Nickname validation:', { original: nickname, cleaned: cleanNickname });
-    
     return cleanNickname;
   }
 
@@ -109,19 +102,16 @@ class WebSocketService {
   private createEventHandler(): SocketEventHandler {
     return {
       onConnectionReady: () => {
-        console.log('✅ Connection established');
         this.isConnected = true;
         this.callbacks?.onConnectionChange(true);
       },
       
       onClose: () => {
-        console.log('❌ Socket closed');
         this.isConnected = false;
         this.callbacks?.onConnectionChange(false);
       },
       
       onMessage: (message: any) => {
-        console.log('📨 Received message:', message);
         this.handleIncomingMessage(message);
       }
     };
@@ -130,7 +120,7 @@ class WebSocketService {
   /**
    * Create a new chat room
    */
-  async createRoom(nickname: string, userIcon?: string): Promise<string> {
+  async createRoom(nickname: string, userIcon?: string): Promise<void> {
     const cleanNickname = this.validateNickname(nickname);
     this.currentNickname = cleanNickname;
     
@@ -141,8 +131,6 @@ class WebSocketService {
       const roomId = await this.client.createChatRoom(cleanNickname, userIcon);
       this.currentRoomId = roomId;
       this.callbacks?.onRoomCreated(roomId);
-      
-      return roomId;
     } catch (error: any) {
       this.handleError('create room', error);
       throw error;
@@ -163,8 +151,8 @@ class WebSocketService {
       this.client = new TelepartyClient(this.createEventHandler());
       await this.waitForConnection();
       
-      await this.client.joinChatRoom(cleanNickname, cleanRoomId, userIcon);
-      this.callbacks?.onRoomJoined();
+      const messageList = await this.client.joinChatRoom(cleanNickname, cleanRoomId, userIcon);
+      this.callbacks?.onRoomJoined(messageList);
     } catch (error: any) {
       this.handleError('join room', error);
       throw error;
@@ -195,7 +183,6 @@ class WebSocketService {
         this.callbacks?.onMessage(message as SessionChatMessage);
       }
     } catch (error) {
-      console.error('Error processing message:', error);
       this.callbacks?.onError('Failed to process message');
     }
   }
@@ -211,7 +198,6 @@ class WebSocketService {
         body: messageText
       });
     } catch (error) {
-      console.error('Failed to send message:', error);
       this.callbacks?.onError('Failed to send message');
     }
   }
@@ -226,9 +212,7 @@ class WebSocketService {
       this.client?.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, {
         typing
       });
-    } catch (error) {
-      console.error('Failed to send typing presence:', error);
-    }
+    } catch (error) {}
   }
 
   /**
@@ -256,8 +240,6 @@ class WebSocketService {
    * Handle errors with appropriate messages
    */
   private handleError(operation: string, error: any): void {
-    console.error(`❌ Error ${operation}:`, error);
-    
     this.cleanup();
     
     let errorMessage = `Failed to ${operation}`;
@@ -332,9 +314,7 @@ class WebSocketService {
           (this.client as any).disconnect();
         }
         this.client = null;
-      } catch (error) {
-        console.error('Error disconnecting:', error);
-      }
+      } catch (error) {}
     }
     
     this.isConnected = false;
@@ -342,20 +322,6 @@ class WebSocketService {
     this.currentUserId = '';
     this.currentRoomId = '';
     this.callbacks?.onConnectionChange(false);
-  }
-
-  /**
-   * Get debug information
-   */
-  getDebugInfo(): object {
-    return {
-      isConnected: this.isConnected,
-      currentNickname: this.currentNickname,
-      currentUserId: this.currentUserId,
-      currentRoomId: this.currentRoomId,
-      hasClient: !!this.client,
-      clientType: this.client ? this.client.constructor.name : 'none'
-    };
   }
 }
 
