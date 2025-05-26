@@ -4,7 +4,25 @@ import { webSocketService } from './services/webSocket';
 import { WebSocketCallbacks } from './types';
 import { SessionChatMessage } from 'teleparty-websocket-lib';
 
+// Predefined avatar icons
+const AVATAR_ICONS = [
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=John',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Mike',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Emma',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=David',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Lisa',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Tom',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Anna',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Peter',
+  'https://api.dicebear.com/7.x/avataaars/svg?seed=Maria'
+];
+
 type AppState = 'initial' | 'creating' | 'joining' | 'in-room';
+
+const DEFAULT_USER_ICON = '👤';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('initial');
@@ -18,15 +36,25 @@ const App: React.FC = () => {
   const [othersTyping, setOthersTyping] = useState(false);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [connectionError, setConnectionError] = useState<string>('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [userIcon, setUserIcon] = useState(AVATAR_ICONS[0]);
+  const [showIconPicker, setShowIconPicker] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const iconPickerRef = useRef<HTMLDivElement>(null);
 
   // Initialize WebSocket service
   useEffect(() => {
     const callbacks: WebSocketCallbacks = {
       onMessage: (message: SessionChatMessage) => {
-        setMessages(prev => [...prev, message]);
+        // If it's an array, it's the initial messages
+        if (Array.isArray(message)) {
+          setMessages(message);
+        } else {
+          // Otherwise it's a new message
+          setMessages(prev => [...prev, message]);
+        }
       },
       
       onTypingUpdate: (data: any) => {
@@ -52,17 +80,13 @@ const App: React.FC = () => {
       
       onRoomJoined: () => {
         setAppState('in-room');
-        setCurrentRoomId(roomId);
+        setCurrentRoomId(webSocketService.getCurrentRoomId());
         setConnectionError('');
       },
       
       onError: (error: string) => {
         setConnectionError(error);
         setAppState('initial');
-      },
-      
-      onPreviousMessages: (messages: SessionChatMessage[]) => {
-        setMessages(messages);
       }
     };
     
@@ -118,7 +142,8 @@ const App: React.FC = () => {
     setConnectionError('');
     
     try {
-      await webSocketService.createRoom(nickname);
+      const roomId = await webSocketService.createRoom(nickname, userIcon);
+      setCurrentRoomId(roomId);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to create room. Please try again.';
       setConnectionError(errorMessage);
@@ -133,9 +158,10 @@ const App: React.FC = () => {
     setConnectionError('');
     
     try {
-      await webSocketService.joinRoom(roomId, nickname);
+      await webSocketService.joinRoom(roomId, nickname, userIcon);
     } catch (error) {
-      setConnectionError(error instanceof Error ? error.message : 'Failed to join room. Please check the room ID and try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to join room. Please try again.';
+      setConnectionError(errorMessage);
       setAppState('initial');
     }
   };
@@ -158,12 +184,23 @@ const App: React.FC = () => {
     setMessageInput(e.target.value);
     
     // Handle typing indicator
-    if (!isTyping && e.target.value.trim()) {
-      setIsTyping(true);
-      try {
-        webSocketService.setTypingPresence(true);
-      } catch (error) {
-        // Silently handle typing presence errors
+    if (e.target.value.trim()) {
+      if (!isTyping) {
+        setIsTyping(true);
+        try {
+          webSocketService.setTypingPresence(true);
+        } catch (error) {
+          // Silently handle typing presence errors
+        }
+      }
+    } else {
+      if (isTyping) {
+        setIsTyping(false);
+        try {
+          webSocketService.setTypingPresence(false);
+        } catch (error) {
+          // Silently handle typing presence errors
+        }
       }
     }
   };
@@ -209,17 +246,17 @@ const App: React.FC = () => {
   };
 
   const isMyMessage = (message: SessionChatMessage): boolean => {
-    return message.userNickname === webSocketService.getCurrentNickname();
+    return message.userNickname === nickname;
   };
 
   const getTypingMessage = (): string => {
-    if (!othersTyping || typingUsers.length === 0) {
-      return 'Someone is typing...';
+    if (!othersTyping) {
+      return 'User typing...';
     }
     
-    // Filter out current user from typing users
-    const otherTypingUsers = typingUsers.filter(userId => 
-      userId !== webSocketService.getCurrentNickname()
+    // Filter out current user from typing users using nickname
+    const otherTypingUsers = typingUsers.filter(nickname => 
+      nickname !== webSocketService.getCurrentNickname()
     );
     
     if (otherTypingUsers.length === 0) {
@@ -248,6 +285,25 @@ const App: React.FC = () => {
     );
   };
 
+  const handleIconClick = (iconUrl: string) => {
+    setUserIcon(iconUrl);
+    setShowIconPicker(false);
+  };
+
+  // Close icon picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (iconPickerRef.current && !iconPickerRef.current.contains(event.target as Node)) {
+        setShowIconPicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   const renderInitialScreen = () => (
     <div className="initial-screen">
       <div className="logo">
@@ -255,17 +311,50 @@ const App: React.FC = () => {
         <p>Connect and chat with friends in real-time</p>
       </div>
       
-      {renderErrorMessage()}
-      
-      <div className="nickname-input">
-        <input
-          type="text"
-          placeholder="Enter your nickname"
-          value={nickname}
-          onChange={(e) => setNickname(e.target.value)}
-          maxLength={20}
-          onKeyPress={(e) => e.key === 'Enter' && handleCreateRoom()}
-        />
+      <div className="user-setup">
+        <div className="user-profile">
+          <div className="icon-selector">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setShowIconPicker(!showIconPicker)}
+              title="Choose your icon"
+            >
+              <img src={userIcon} alt="User icon" className="user-icon" />
+            </button>
+            {showIconPicker && (
+              <div className="icon-picker-container" ref={iconPickerRef}>
+                <div className="icon-grid">
+                  {AVATAR_ICONS.map((icon, index) => (
+                    <button
+                      key={index}
+                      className={`icon-option ${icon === userIcon ? 'selected' : ''}`}
+                      onClick={() => handleIconClick(icon)}
+                    >
+                      <img src={icon} alt={`Avatar ${index + 1}`} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="user-info">
+            <div className="nickname-input">
+              <input
+                type="text"
+                placeholder="Enter your nickname"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                maxLength={20}
+                onKeyPress={(e) => e.key === 'Enter' && handleCreateRoom()}
+              />
+            </div>
+            <div className="user-status">
+              <span className="status-dot"></span>
+              <span className="status-text">Ready to chat</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="room-actions">
@@ -366,13 +455,23 @@ const App: React.FC = () => {
           >
             {!message.isSystemMessage && (
               <div className="message-header">
-                <span className="nickname">
-                  {isMyMessage(message) ? 'You' : (message.userNickname || 'Anonymous')}
-                </span>
+                <div className="message-user">
+                  <img 
+                    src={message.userIcon || AVATAR_ICONS[0]} 
+                    alt="User icon" 
+                    className="message-user-icon"
+                  />
+                  <span className="nickname">
+                    {isMyMessage(message) ? 'You' : (message.userNickname || 'Anonymous')}
+                  </span>
+                </div>
                 <span className="timestamp">{formatTimestamp(message.timestamp)}</span>
               </div>
             )}
-            <div className="message-body">{message.body}</div>
+            <div className="message-body">
+              {message.isSystemMessage && <span>{message.userNickname} - </span>}
+              {message.body}
+            </div>
           </div>
         ))}
         
@@ -391,15 +490,17 @@ const App: React.FC = () => {
       </div>
 
       <form onSubmit={handleSendMessage} className="message-form">
-        <input
-          type="text"
-          placeholder="Type your message..."
-          value={messageInput}
-          onChange={handleMessageInputChange}
-          maxLength={500}
-          disabled={!webSocketService.isClientConnected()}
-          autoFocus
-        />
+        <div className="message-input-container">
+          <input
+            type="text"
+            placeholder="Type your message..."
+            value={messageInput}
+            onChange={handleMessageInputChange}
+            maxLength={500}
+            disabled={!webSocketService.isClientConnected()}
+            autoFocus
+          />
+        </div>
         <button type="submit" disabled={!messageInput.trim() || !webSocketService.isClientConnected()}>
           Send
         </button>

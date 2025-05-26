@@ -7,7 +7,9 @@ import {
 } from 'teleparty-websocket-lib';
 import { TypingMessageData } from '../types';
 
-// Event callbacks type
+/**
+ * Callback interface for WebSocket events
+ */
 interface WebSocketCallbacks {
   onMessage: (message: SessionChatMessage) => void;
   onTypingUpdate: (data: TypingMessageData) => void;
@@ -15,23 +17,31 @@ interface WebSocketCallbacks {
   onRoomCreated: (roomId: string) => void;
   onRoomJoined: () => void;
   onError: (error: string) => void;
-  onPreviousMessages?: (messages: SessionChatMessage[]) => void;
 }
 
+/**
+ * WebSocket service for managing chat room connections and messages
+ */
 class WebSocketService {
   private client: TelepartyClient | null = null;
   private callbacks: WebSocketCallbacks | null = null;
   private currentNickname: string = '';
+  private currentUserId: string = '';
   private currentRoomId: string = '';
   private isConnected: boolean = false;
   private connectionTimeout: NodeJS.Timeout | null = null;
+
+  private readonly CONNECTION_TIMEOUT_MS = 10000;
+  private readonly MAX_NICKNAME_LENGTH = 50;
 
   constructor() {
     console.log('WebSocketService initialized');
   }
 
-  // Wait for connection to be ready with timeout
-  private waitForConnection(timeoutMs: number = 10000): Promise<void> {
+  /**
+   * Wait for connection to be ready with timeout
+   */
+  private async waitForConnection(timeoutMs: number = this.CONNECTION_TIMEOUT_MS): Promise<void> {
     return new Promise((resolve, reject) => {
       const startTime = Date.now();
       
@@ -53,125 +63,95 @@ class WebSocketService {
     });
   }
 
-  // Initialize the service with callbacks
+  /**
+   * Initialize the service with callbacks
+   */
   initialize(callbacks: WebSocketCallbacks): void {
     this.callbacks = callbacks;
   }
 
-  // Validate and sanitize room ID
+  /**
+   * Validate and sanitize room ID
+   */
   private validateRoomId(roomId: string): string {
-    if (!roomId || typeof roomId !== 'string') {
-      throw new Error('Room ID is required');
+    if (!roomId?.trim()) {
+      throw new Error('Room ID is required and cannot be empty');
     }
     
-    // Trim whitespace
     const cleanRoomId = roomId.trim();
-    
-    if (cleanRoomId.length === 0) {
-      throw new Error('Room ID cannot be empty');
-    }
-    
-    // Log the cleaned room ID
-    console.log('🔍 Original room ID:', `"${roomId}"`);
-    console.log('🧹 Cleaned room ID:', `"${cleanRoomId}"`);
+    console.log('Room ID validation:', { original: roomId, cleaned: cleanRoomId });
     
     return cleanRoomId;
   }
 
-  // Validate nickname
+  /**
+   * Validate and sanitize nickname
+   */
   private validateNickname(nickname: string): string {
-    if (!nickname || typeof nickname !== 'string') {
-      throw new Error('Nickname is required');
+    if (!nickname?.trim()) {
+      throw new Error('Nickname is required and cannot be empty');
     }
     
     const cleanNickname = nickname.trim();
     
-    if (cleanNickname.length === 0) {
-      throw new Error('Nickname cannot be empty');
+    if (cleanNickname.length > this.MAX_NICKNAME_LENGTH) {
+      throw new Error(`Nickname is too long (max ${this.MAX_NICKNAME_LENGTH} characters)`);
     }
     
-    if (cleanNickname.length > 50) {
-      throw new Error('Nickname is too long (max 50 characters)');
-    }
-    
-    console.log('👤 Cleaned nickname:', `"${cleanNickname}"`);
+    console.log('Nickname validation:', { original: nickname, cleaned: cleanNickname });
     
     return cleanNickname;
   }
 
-  // Create a new chat room
+  /**
+   * Create event handler for WebSocket events
+   */
+  private createEventHandler(): SocketEventHandler {
+    return {
+      onConnectionReady: () => {
+        console.log('✅ Connection established');
+        this.isConnected = true;
+        this.callbacks?.onConnectionChange(true);
+      },
+      
+      onClose: () => {
+        console.log('❌ Socket closed');
+        this.isConnected = false;
+        this.callbacks?.onConnectionChange(false);
+      },
+      
+      onMessage: (message: any) => {
+        console.log('📨 Received message:', message);
+        this.handleIncomingMessage(message);
+      }
+    };
+  }
+
+  /**
+   * Create a new chat room
+   */
   async createRoom(nickname: string, userIcon?: string): Promise<string> {
     const cleanNickname = this.validateNickname(nickname);
     this.currentNickname = cleanNickname;
     
-    console.log('Creating room with nickname:', nickname, 'userIcon:', userIcon);
-    
     try {
-      // Create event handler
-      const eventHandler: SocketEventHandler = {
-        onConnectionReady: () => {
-          console.log('✅ Connection established successfully');
-          this.isConnected = true;
-          this.callbacks?.onConnectionChange(true);
-        },
-        
-        onClose: () => {
-          console.log('❌ Socket closed');
-          this.isConnected = false;
-          this.callbacks?.onConnectionChange(false);
-        },
-        
-        onMessage: (message: any) => {
-          console.log('📨 Received message:', message);
-          this.handleIncomingMessage(message);
-        }
-      };
-
-      console.log('🔌 Initializing TelepartyClient...');
-      // Initialize client with event handler
-      this.client = new TelepartyClient(eventHandler);
-      
-      console.log('⏳ Waiting for connection...');
-      // Wait for connection to be established
+      this.client = new TelepartyClient(this.createEventHandler());
       await this.waitForConnection();
       
-      console.log('🏠 Creating chat room...');
-      // Create chat room - wait for this to complete
-      // Fixed: createChatRoom(nickname, userIcon) vs joinChatRoom(nickname, roomId, userIcon)
-      const roomId = await this.client.createChatRoom(cleanNickname, userIcon || undefined);
-      
-      console.log('✅ Room created successfully with ID:', roomId);
+      const roomId = await this.client.createChatRoom(cleanNickname, userIcon);
       this.currentRoomId = roomId;
-      
       this.callbacks?.onRoomCreated(roomId);
+      
       return roomId;
-      
     } catch (error: any) {
-      console.error('❌ Detailed error creating room:', error);
-      console.error('Error name:', error?.name);
-      console.error('Error message:', error?.message);
-      console.error('Error stack:', error?.stack);
-      
-      // Cleanup on error
-      this.cleanup();
-      
-      // Provide more specific error messages
-      let errorMessage = 'Failed to create room';
-      if (error?.message) {
-        if (error.message.includes('timeout')) {
-          errorMessage = 'Connection timeout. Please check your internet connection and try again.';
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
-          errorMessage = 'Network error. Please check your connection and try again.';
-        } else {
-          errorMessage += `: ${error.message}`;
-        }
-      }
-      
-      throw new Error(errorMessage);
+      this.handleError('create room', error);
+      throw error;
     }
   }
 
-  // Join an existing chat room
+  /**
+   * Join an existing chat room
+   */
   async joinRoom(roomId: string, nickname: string, userIcon?: string): Promise<void> {
     const cleanRoomId = this.validateRoomId(roomId);
     const cleanNickname = this.validateNickname(nickname);
@@ -179,87 +159,29 @@ class WebSocketService {
     this.currentNickname = cleanNickname;
     this.currentRoomId = cleanRoomId;
     
-    console.log('🚪 Attempting to join room:', cleanRoomId, 'with nickname:', cleanNickname, 'userIcon:', userIcon);
-    
     try {
-      // Create event handler
-      const eventHandler: SocketEventHandler = {
-        onConnectionReady: () => {
-          console.log('✅ Connection established for room join');
-          this.isConnected = true;
-          this.callbacks?.onConnectionChange(true);
-        },
-        
-        onClose: () => {
-          console.log('❌ Socket closed during room join');
-          this.isConnected = false;
-          this.callbacks?.onConnectionChange(false);
-        },
-        
-        onMessage: (message: any) => {
-          console.log('📨 Received message in room:', message);
-          this.handleIncomingMessage(message);
-        }
-      };
-
-      console.log('🔌 Initializing TelepartyClient for join...');
-      // Initialize client with event handler
-      this.client = new TelepartyClient(eventHandler);
-      
-      console.log('⏳ Waiting for connection before joining...');
-      // Wait for connection to be established
+      this.client = new TelepartyClient(this.createEventHandler());
       await this.waitForConnection();
       
-      console.log('🚪 Attempting to join chat room with ID:', cleanRoomId);
-      // Join chat room
-      await this.client.joinChatRoom(cleanNickname,cleanRoomId, userIcon || undefined);
-      
-      console.log('✅ Successfully joined room:', cleanRoomId);
+      await this.client.joinChatRoom(cleanNickname, cleanRoomId, userIcon);
       this.callbacks?.onRoomJoined();
-      
     } catch (error: any) {
-      console.error('❌ Detailed error joining room:', error);
-      console.error('Error name:', error?.name);
-      console.error('Error message:', error?.message);
-      console.error('Error stack:', error?.stack);
-      console.error('Room ID attempted:', cleanRoomId);
-      console.error('Nickname used:', cleanNickname);
-      
-      // Cleanup on error
-      this.cleanup();
-      
-      // Provide more specific error messages
-      let errorMessage = 'Failed to join room';
-      if (error?.message) {
-        const msg = error.message.toLowerCase();
-        if (msg.includes('not found') || msg.includes('invalid') || msg.includes('does not exist')) {
-          errorMessage = `Room "${cleanRoomId}" not found. Please check the room ID and try again.`;
-        } else if (msg.includes('timeout')) {
-          errorMessage = 'Connection timeout. Please check your internet connection and try again.';
-        } else if (msg.includes('network') || msg.includes('fetch')) {
-          errorMessage = 'Network error. Please check your connection and try again.';
-        } else if (msg.includes('full') || msg.includes('capacity')) {
-          errorMessage = 'Room is full. Please try again later.';
-        } else if (msg.includes('nickname') || msg.includes('name')) {
-          errorMessage = 'Invalid nickname. Please try a different name.';
-        } else {
-          errorMessage += `: ${error.message}`;
-        }
-      }
-      
-      throw new Error(errorMessage);
+      this.handleError('join room', error);
+      throw error;
     }
   }
 
-  // Handle incoming messages based on type
+  /**
+   * Handle incoming messages based on type
+   */
   private handleIncomingMessage(message: any): void {
     try {
-      // Check if it's a typed message with message type
+      if (!message) return;
+
       if (message.type) {
         switch (message.type) {
           case SocketMessageTypes.SEND_MESSAGE:
-            const chatMessage = message.data as SessionChatMessage;
-            this.callbacks?.onMessage(chatMessage);
+            this.callbacks?.onMessage(message.data as SessionChatMessage);
             break;
             
           case SocketMessageTypes.SET_TYPING_PRESENCE:
@@ -267,80 +189,137 @@ class WebSocketService {
             break;
             
           default:
-            console.log('Unknown message type:', message.type);
+            console.warn('Unknown message type:', message.type);
         }
       } else {
-        // Direct SessionChatMessage
-        const chatMessage = message as SessionChatMessage;
-        this.callbacks?.onMessage(chatMessage);
+        this.callbacks?.onMessage(message as SessionChatMessage);
       }
     } catch (error) {
       console.error('Error processing message:', error);
+      this.callbacks?.onError('Failed to process message');
     }
   }
 
-  // Send a chat message
+  /**
+   * Send a chat message
+   */
   sendMessage(messageText: string): void {
-    if (!this.client) {
-      throw new Error('WebSocket service not initialized');
-    }
-    
-    if (!this.isConnected) {
-      throw new Error('Not connected to server');
-    }
-    
+    if (!this.validateConnection()) return;
+
     try {
-      this.client.sendMessage(SocketMessageTypes.SEND_MESSAGE, {
+      this.client?.sendMessage(SocketMessageTypes.SEND_MESSAGE, {
         body: messageText
       });
     } catch (error) {
       console.error('Failed to send message:', error);
-      throw new Error('Failed to send message');
+      this.callbacks?.onError('Failed to send message');
     }
   }
 
-  // Update typing presence
+  /**
+   * Update typing presence
+   */
   setTypingPresence(typing: boolean): void {
-    if (!this.client) {
-      console.warn('WebSocket service not initialized');
-      return;
-    }
-    
-    if (!this.isConnected) {
-      return; // Silently fail for typing indicators
-    }
-    
+    if (!this.validateConnection(true)) return;
+
     try {
-      this.client.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, {
-        typing: typing
+      this.client?.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, {
+        typing
       });
     } catch (error) {
       console.error('Failed to send typing presence:', error);
-      // Don't throw error for typing indicators
     }
   }
 
-  // Check if connected
+  /**
+   * Validate connection state
+   */
+  private validateConnection(silent: boolean = false): boolean {
+    if (!this.client) {
+      if (!silent) {
+        this.callbacks?.onError('WebSocket service not initialized');
+      }
+      return false;
+    }
+    
+    if (!this.isConnected) {
+      if (!silent) {
+        this.callbacks?.onError('Not connected to server');
+      }
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
+   * Handle errors with appropriate messages
+   */
+  private handleError(operation: string, error: any): void {
+    console.error(`❌ Error ${operation}:`, error);
+    
+    this.cleanup();
+    
+    let errorMessage = `Failed to ${operation}`;
+    if (error?.message) {
+      const msg = error.message.toLowerCase();
+      
+      if (msg.includes('not found') || msg.includes('invalid')) {
+        errorMessage = `Room not found. Please check the room ID and try again.`;
+      } else if (msg.includes('timeout')) {
+        errorMessage = 'Connection timeout. Please check your internet connection and try again.';
+      } else if (msg.includes('network')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else if (msg.includes('full')) {
+        errorMessage = 'Room is full. Please try again later.';
+      } else if (msg.includes('nickname')) {
+        errorMessage = 'Invalid nickname. Please try a different name.';
+      } else {
+        errorMessage += `: ${error.message}`;
+      }
+    }
+    
+    this.callbacks?.onError(errorMessage);
+  }
+
+  /**
+   * Get current connection state
+   */
   isClientConnected(): boolean {
     return this.isConnected;
   }
 
-  // Get current nickname
+  /**
+   * Get current nickname
+   */
   getCurrentNickname(): string {
     return this.currentNickname;
   }
 
-  // Get current room ID
+  /**
+   * Get current userId
+   */
+  getCurrentUserId(): string {
+    return this.currentUserId;
+  }
+
+  /**
+   * Get current room ID
+   */
   getCurrentRoomId(): string {
     return this.currentRoomId;
   }
 
-  // Disconnect and cleanup
+  /**
+   * Disconnect and cleanup
+   */
   disconnect(): void {
-    this.cleanup();
+    this.client?.teardown()
   }
 
-  // Internal cleanup method
+  /**
+   * Internal cleanup method
+   */
   private cleanup(): void {
     if (this.connectionTimeout) {
       clearTimeout(this.connectionTimeout);
@@ -349,7 +328,6 @@ class WebSocketService {
     
     if (this.client) {
       try {
-        // The library may have a disconnect method
         if (typeof (this.client as any).disconnect === 'function') {
           (this.client as any).disconnect();
         }
@@ -361,34 +339,19 @@ class WebSocketService {
     
     this.isConnected = false;
     this.currentNickname = '';
+    this.currentUserId = '';
     this.currentRoomId = '';
     this.callbacks?.onConnectionChange(false);
   }
 
-  // Test method to check if a room exists (if supported by the library)
-  async testRoomExists(roomId: string): Promise<boolean> {
-    try {
-      const cleanRoomId = this.validateRoomId(roomId);
-      console.log('🔍 Testing if room exists:', cleanRoomId);
-      
-      // This is a conceptual method - the actual library may not have this
-      // But we can try to join and see what happens
-      if (this.client && typeof (this.client as any).checkRoom === 'function') {
-        return await (this.client as any).checkRoom(cleanRoomId);
-      }
-      
-      return true; // Assume it exists if we can't check
-    } catch (error) {
-      console.log('❌ Room existence check failed:', error);
-      return false;
-    }
-  }
-
-  // Get debug info
+  /**
+   * Get debug information
+   */
   getDebugInfo(): object {
     return {
       isConnected: this.isConnected,
       currentNickname: this.currentNickname,
+      currentUserId: this.currentUserId,
       currentRoomId: this.currentRoomId,
       hasClient: !!this.client,
       clientType: this.client ? this.client.constructor.name : 'none'
