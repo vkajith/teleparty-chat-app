@@ -2,6 +2,8 @@
 
 A real-time chat application built with React and WebSocket technology, allowing users to create and join chat rooms for seamless communication.
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Teleparty%20Chat-blue?style=for-the-badge)](https://vkajith.github.io/teleparty-chat-app)
+
 ## Features
 
 - 🚀 Real-time messaging with WebSocket
