@@ -1,46 +1,187 @@
-# Getting Started with Create React App
+# Teleparty WebSocket Library Usage
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This document shows how the app correctly integrates with `teleparty-websocket-lib` based on the provided API examples.
 
-## Available Scripts
+## 🔌 Library Integration
 
-In the project directory, you can run:
+### Import Statement
+```typescript
+import { 
+  TelepartyClient, 
+  SocketEventHandler, 
+  SocketMessageTypes,
+  SessionChatMessage
+} from 'teleparty-websocket-lib';
+```
 
-### `npm start`
+### Client Initialization
+```typescript
+const eventHandler: SocketEventHandler = {
+    onConnectionReady: () => {
+        console.log("Connection has been established");
+        // Handle connection ready state
+    },
+    onClose: () => {
+        console.log("Socket has been closed");
+        // Handle connection close
+    },
+    onMessage: (message) => {
+        console.log("Received message:", message);
+        // Process incoming messages
+    }
+};
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+const client = new TelepartyClient(eventHandler);
+```
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+### Creating a Chat Room
+```typescript
+// Create room with nickname and optional user icon
+let roomId = await client.createChatRoom(nickname, userIcon);
+console.log('Room created with ID:', roomId);
+```
 
-### `npm test`
+### Joining a Chat Room
+```typescript
+// Join existing room
+await client.joinChatRoom(roomId, nickname, userIcon);
+console.log('Joined room:', roomId);
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## 📨 Message Handling
 
-### `npm run build`
+### Sending Chat Messages
+```typescript
+client.sendMessage(SocketMessageTypes.SEND_MESSAGE, {
+    body: 'Hello world'
+});
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Updating Typing Presence
+```typescript
+// Start typing
+client.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, {
+    typing: true
+});
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+// Stop typing
+client.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, {
+    typing: false
+});
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Receiving Messages
+```typescript
+const eventHandler: SocketEventHandler = {
+    onConnectionReady: () => {
+        // Connection established
+    },
+    onClose: () => {
+        // Connection closed
+    },
+    onMessage: (message) => {
+        // Check message type and process accordingly
+        if (message.type === SocketMessageTypes.SEND_MESSAGE) {
+            const chatMessage = message.data as SessionChatMessage;
+            displayChatMessage(chatMessage);
+        } else if (message.type === SocketMessageTypes.SET_TYPING_PRESENCE) {
+            const typingData = message.data;
+            updateTypingIndicator(typingData);
+        }
+    }
+};
+```
 
-### `npm run eject`
+## 🏗 App Implementation
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+### WebSocket Service Layer
+The app implements a service layer (`websocketService.ts`) that:
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+1. **Wraps the TelepartyClient** with a clean interface
+2. **Handles connection lifecycle** (ready, close, error)
+3. **Processes different message types** automatically
+4. **Provides error handling** and recovery
+5. **Manages state synchronization** with React components
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+### Key Differences from Mock Implementation
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+| Feature | Mock Version | Real Library |
+|---------|-------------|--------------|
+| **Initialization** | `new TelepartyClient()` then `connect()` | `new TelepartyClient(eventHandler)` |
+| **Room Creation** | `createRoom(nickname)` | `createChatRoom(nickname, userIcon)` |
+| **Room Joining** | `joinRoom(roomId, nickname)` | `joinChatRoom(roomId, nickname, userIcon)` |
+| **Connection Events** | `onOpen()` | `onConnectionReady()` |
+| **Message Structure** | Direct SessionChatMessage | Wrapped with `type` and `data` |
 
-## Learn More
+### React Integration
+```typescript
+// Component state updates based on WebSocket events
+const callbacks: WebSocketCallbacks = {
+  onMessage: (message: SessionChatMessage) => {
+    setMessages(prev => [...prev, message]);
+  },
+  onConnectionChange: (connected: boolean) => {
+    setIsConnected(connected);
+  },
+  onRoomCreated: (roomId: string) => {
+    setCurrentRoomId(roomId);
+    setAppState('in-room');
+  }
+  // ... other callbacks
+};
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+webSocketService.initialize(callbacks);
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## 🔧 Error Handling
+
+### Connection Errors
+```typescript
+try {
+  const roomId = await client.createChatRoom(nickname, userIcon);
+  // Success handling
+} catch (error) {
+  console.error('Failed to create room:', error);
+  // Show user-friendly error message
+}
+```
+
+### Message Sending Errors
+```typescript
+try {
+  client.sendMessage(SocketMessageTypes.SEND_MESSAGE, {
+    body: messageText
+  });
+} catch (error) {
+  console.error('Failed to send message:', error);
+  // Retry or show error to user
+}
+```
+
+## 📋 Complete Flow Example
+
+```typescript
+// 1. Initialize client with event handler
+const eventHandler: SocketEventHandler = {
+  onConnectionReady: () => setConnected(true),
+  onClose: () => setConnected(false),
+  onMessage: (message) => handleMessage(message)
+};
+
+const client = new TelepartyClient(eventHandler);
+
+// 2. Create or join room
+const roomId = await client.createChatRoom("John", "👤");
+
+// 3. Send messages
+client.sendMessage(SocketMessageTypes.SEND_MESSAGE, {
+  body: "Hello everyone!"
+});
+
+// 4. Handle typing
+client.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, {
+  typing: true
+});
+```
+
+This implementation correctly follows the teleparty-websocket-lib API patterns and provides a robust, production-ready chat application.
