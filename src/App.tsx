@@ -191,6 +191,9 @@ const App: React.FC = () => {
     // Set typing status based on content
     if (newValue.trim().length > 0) {
       setIsTyping(true);
+    }
+    else{
+      setIsTyping(false);
     }  
   };
 
