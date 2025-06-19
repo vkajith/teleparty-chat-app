@@ -306,8 +306,13 @@ const App: React.FC = () => {
 
   const renderLoadingScreen = () => (
     <div className="loading-screen">
-      <p>{appState === 'creating' ? 'Creating room...' : 'Joining room...'}</p>
-      <button onClick={handleReturnToLobby} className="cancel-btn">Cancel</button>
+      <div className="spinner"></div>
+      <div className="loading-text">
+        {appState === 'creating' ? 'Creating your chat room' : 'Joining the chat room'}<span className="loading-dots"></span>
+      </div>
+      <button onClick={handleReturnToLobby} className="cancel-btn">
+        Cancel
+      </button>
     </div>
   );
 
@@ -316,7 +321,7 @@ const App: React.FC = () => {
       <div className='app loading-screen'>
         <div className="spinner"></div>
         <div className="loading-text">
-          Connecting to chat<span className="loading-dots"></span>
+          Initializing chat<span className="loading-dots"></span>
         </div>
       </div>
     )
