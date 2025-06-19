@@ -4,12 +4,14 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faUser } from '@fortawesome/free-solid-svg-icons';
 
 interface MessageListProps {
+  nickname: string;
   messages: SessionChatMessage[];
   isMyMessage: (message: SessionChatMessage) => boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
+  nickname,
   messages,
   isMyMessage,
   messagesEndRef,
@@ -33,6 +35,14 @@ export const MessageList: React.FC<MessageListProps> = ({
     return groups;
   }, []);
 
+  const formatSystemMessage = (nickname: string, message: SessionChatMessage) => {
+    if (!message.userNickname) return message.body;
+    if (nickname === message.userNickname) {
+      return `You - ${message.body}`;
+    }
+    return `${message.userNickname} - ${message.body}`;
+  };
+
   return (
     <div className="messages-container">
       {messages.length === 0 && (
@@ -51,7 +61,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               {group.map((message, messageIndex) => (
                 <div key={messageIndex} className="message system-message">
                   <div className="message-body">
-                    {message.userNickname} - {message.body}
+                    {formatSystemMessage(nickname, message)}
                   </div>
                 </div>
               ))}
@@ -69,12 +79,12 @@ export const MessageList: React.FC<MessageListProps> = ({
                 <div className="message-header">
                   <div className="user-avatar">
                     {message.userIcon ? (
-                      <img src={message.userIcon} alt={message.userNickname} />
+                      <img src={message.userIcon} alt={isCurrentUser ? 'You' : message.userNickname} />
                     ) : (
                       <FontAwesomeIcon icon={faUser} />
                     )}
                   </div>
-                  <span className="nickname">{message.userNickname}</span>
+                  <span className="nickname">{isCurrentUser ? 'You' : message.userNickname}</span>
                 </div>
                 <div className="message-body">
                   {message.body}

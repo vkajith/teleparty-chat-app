@@ -22,36 +22,21 @@ const App: React.FC = () => {
   const [connectionError, setConnectionError] = useState<string>('');
   const [userIcon, setUserIcon] = useState(AVATAR_ICONS[0]);
   const [showJoinForm, setShowJoinForm] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Callback to handle typing updates
   const handleTypingUpdate = useCallback((data: TypingMessageData) => {
-    console.log('Typing update received:', data, 'Current nickname:', nickname);
+    console.log('Typing update received:', data);
     
-    // Filter out current user from typing indicators
-    const filteredUsers = (data.usersTyping || []).filter((user: string | TypingUser) => {
-      // Handle both string usernames and user objects
-      if (typeof user === 'string') {
-        const isCurrentUser = user === nickname;
-        console.log(`Comparing string "${user}" with "${nickname}": ${isCurrentUser ? 'MATCH (filtering out)' : 'different'}`);
-        return !isCurrentUser;
-      } else if (user && typeof user === 'object') {
-        const isCurrentUser = user.userNickname === nickname || user.nickname === nickname;
-        console.log(`Comparing object`, user, `with "${nickname}": ${isCurrentUser ? 'MATCH (filtering out)' : 'different'}`);
-        return !isCurrentUser;
-      }
-      return true;
-    }).map((user: string | TypingUser) => {
-      // Convert all users to string format for display
-      return typeof user === 'string' ? user : (user.userNickname || user.nickname || 'Unknown');
-    });
-    
-    console.log('Filtered users:', filteredUsers);
+    // Filter out current user from typing indicators using userId
+    const currentUserId = webSocketService.getCurrentUserId();
+    const filteredUsers = (data.usersTyping || []).filter(userId => userId !== currentUserId);
     setOthersTyping(filteredUsers.length > 0);
     setTypingUsers(filteredUsers);
-  }, [nickname]);
+  }, [nickname]); // Need messages to map userIds to nicknames
 
   // Initialize WebSocket service once
   useEffect(() => {
@@ -59,7 +44,6 @@ const App: React.FC = () => {
       onMessage: (message: SessionChatMessage | SessionChatMessage[]) => {
         if (Array.isArray(message)) {
           setMessages(message);
-          setAppState('in-room');
           setCurrentRoomId(webSocketService.getCurrentRoomId());
         } else {
           setMessages(prev => [...prev, message]);
@@ -70,17 +54,13 @@ const App: React.FC = () => {
       
       onConnectionChange: (connected: boolean) => {
         setIsConnected(connected);
-        if (!connected) {
-          setConnectionError('Connection lost. Attempting to reconnect...');
-        } else {
-          setConnectionError('');
-        }
       },
       
       onRoomCreated: (roomId: string) => {
         setCurrentRoomId(roomId);
         setAppState('in-room');
         setConnectionError('');
+        setIsLoading(false);
       },
       
       onRoomJoined: (messageList: MessageList) => {
@@ -88,12 +68,14 @@ const App: React.FC = () => {
         setAppState('in-room');
         setCurrentRoomId(webSocketService.getCurrentRoomId());
         setConnectionError('');
+        setIsLoading(false);
       },
       
       onError: (error: string | AppError) => {
         const errorMessage = typeof error === 'string' ? error : error.message;
         setConnectionError(errorMessage);
         setAppState('initial');
+        setIsLoading(false);
       }
     };
     
@@ -101,27 +83,23 @@ const App: React.FC = () => {
     
     // Try to restore session on initial load
     const tryRestoreSession = async () => {
-      if (webSocketService.hasSavedSession()) {
-        const savedSession = webSocketService.getSavedSession();
-        if (savedSession) {
-          setNickname(savedSession.nickname);
-          setUserIcon(savedSession.userIcon);
-          setCurrentRoomId(savedSession.roomId);
-          setAppState('joining');
-          try {
-            await webSocketService.restoreSession();
-          } catch (error) {
-            setConnectionError(error instanceof Error ? error.message : 'Failed to restore session');
-            setAppState('initial');
-          }
-        }
+      const session = await webSocketService.restoreSession();
+      if(!session){
+        setIsLoading(false);
+      }
+      if (session) {
+        setNickname(session.nickname);
+        setUserIcon(session.userIcon);
+        setCurrentRoomId(session.roomId);
       }
     };
     
-    tryRestoreSession();
+    if (appState === 'initial') {
+      console.log('Trying to restore session VK');
+      tryRestoreSession();
+    }
     
     return () => {
-      webSocketService.disconnect();
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
@@ -211,7 +189,7 @@ const App: React.FC = () => {
   };
 
   const handleReturnToLobby = () => {
-    webSocketService.disconnect();
+    webSocketService.logout(); // This will clear session and disconnect
     setAppState('initial');
     setMessages([]);
     setCurrentRoomId('');
@@ -222,6 +200,7 @@ const App: React.FC = () => {
     setTypingUsers([]);
     setIsTyping(false);
     setMessageInput('');
+    setNickname('');
   };
 
   const copyRoomId = async () => {
@@ -245,9 +224,8 @@ const App: React.FC = () => {
 
   const getTypingMessage = (): string => {
     if (!othersTyping || typingUsers.length === 0) return '';
-    if (typingUsers.length === 1) return `${typingUsers[0]} is typing...`;
-    if (typingUsers.length === 2) return `${typingUsers[0]} and ${typingUsers[1]} are typing...`;
-    return `${typingUsers[0]} and ${typingUsers.length - 1} others are typing...`;
+    console.log('typingUsers', typingUsers);
+    return 'Someone is typing...';
   };
 
   const renderInitialScreen = () => (
@@ -328,11 +306,16 @@ const App: React.FC = () => {
 
   const renderLoadingScreen = () => (
     <div className="loading-screen">
-      <div className="spinner"></div>
       <p>{appState === 'creating' ? 'Creating room...' : 'Joining room...'}</p>
       <button onClick={handleReturnToLobby} className="cancel-btn">Cancel</button>
     </div>
   );
+
+  if(isLoading){
+    return <div className='app loading-screen'>
+      <div className="spinner"></div>
+      Loading...</div>
+  }
 
   return (
     <div className="app">

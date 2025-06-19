@@ -54,17 +54,16 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
         <div className="header-actions">
           <button onClick={onCopyRoomId}>
             <FontAwesomeIcon icon={faCopy} />
-            Copy Room ID
           </button>
           <button onClick={onLeaveRoom}>
             <FontAwesomeIcon icon={faSignOutAlt} />
-            Leave
           </button>
         </div>
       </div>
 
       <div className="messages-container">
         <MessageList
+          nickname={nickname}
           messages={messages}
           isMyMessage={isMyMessage}
           messagesEndRef={messagesEndRef}
@@ -83,7 +82,6 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({
           />
           <button type="submit" disabled={!isConnected || !messageInput.trim()}>
             <FontAwesomeIcon icon={faPaperPlane} />
-            Send
           </button>
         </form>
       </div>
