@@ -256,7 +256,7 @@ class WebSocketService {
    * Update typing status
    */
   setTypingPresence(typing: boolean): void {
-    if (this.client && this.isConnected) {
+    if (this.client && this.isConnected && this.currentRoomId) {
       this.client.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, { typing });
     }
   }
@@ -324,11 +324,19 @@ class WebSocketService {
             break;
             
           case SocketMessageTypes.SET_TYPING_PRESENCE:
-            this.callbacks?.onTypingUpdate(message.data as TypingMessageData);
+            if (this.callbacks?.onTypingUpdate) {
+              const typingData = message.data as TypingMessageData;
+              // Ensure we have valid typing data before notifying
+              if (typingData && Array.isArray(typingData.usersTyping)) {
+                this.callbacks.onTypingUpdate(typingData);
+              }
+            }
             break;
           
           case "userId":
             this.currentUserId = (message.data as { userId: string }).userId;
+            // Save the updated session with userId
+            this.saveSession();
             break;
             
           default:

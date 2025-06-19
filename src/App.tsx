@@ -28,15 +28,12 @@ const App: React.FC = () => {
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Callback to handle typing updates
-  const handleTypingUpdate = (data: TypingMessageData) => {
-    
-    // Filter out current user from typing indicators using userId
+  const handleTypingUpdate = useCallback((data: TypingMessageData) => {
     const currentUserId = webSocketService.getCurrentUserId();
     const filteredUsers = (data.usersTyping || []).filter(userId => userId !== currentUserId);
     setOthersTyping(filteredUsers.length > 0);
-    console.log('filteredUsers',data.usersTyping, filteredUsers,currentUserId);
     setTypingUsers(filteredUsers);
-  }
+  }, []); // Remove nickname from dependencies as it's not used
 
   // Initialize WebSocket service once
   useEffect(() => {
@@ -54,6 +51,10 @@ const App: React.FC = () => {
       
       onConnectionChange: (connected: boolean) => {
         setIsConnected(connected);
+        if (!connected) {
+          setOthersTyping(false);
+          setTypingUsers([]);
+        }
       },
       
       onRoomCreated: (roomId: string) => {
@@ -103,7 +104,7 @@ const App: React.FC = () => {
         clearTimeout(typingTimeoutRef.current);
       }
     };
-  }, [handleTypingUpdate]); // Include handleTypingUpdate in dependencies
+  }, [handleTypingUpdate, appState]); // Add appState to dependencies
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -117,7 +118,7 @@ const App: React.FC = () => {
       typingTimeoutRef.current = setTimeout(() => {
         setIsTyping(false);
         webSocketService.setTypingPresence(false);
-      }, 3000);
+      }, 1500);
     }
     return () => {
       if (typingTimeoutRef.current) {
@@ -133,7 +134,7 @@ const App: React.FC = () => {
       clearTypingTimeout = setTimeout(() => {
         setOthersTyping(false);
         setTypingUsers([]);
-      }, 5000);
+      }, 2000);
     }
     return () => {
       if (clearTypingTimeout) {
@@ -179,11 +180,28 @@ const App: React.FC = () => {
   };
 
   const handleMessageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setMessageInput(e.target.value);
-    const isTypingNow = e.target.value.trim().length > 0;
-    if (isTypingNow !== isTyping) {
-      setIsTyping(isTypingNow);
-      webSocketService.setTypingPresence(isTypingNow);
+    const newValue = e.target.value;
+    setMessageInput(newValue);
+    
+    // Reset typing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    // Set typing status based on content
+    if (newValue.trim().length > 0) {
+      if (!isTyping) {
+        setIsTyping(true);
+        webSocketService.setTypingPresence(true);
+      }
+      // Reset typing timeout
+      typingTimeoutRef.current = setTimeout(() => {
+        setIsTyping(false);
+        webSocketService.setTypingPresence(false);
+      }, 1500);
+    } else {
+      setIsTyping(false);
+      webSocketService.setTypingPresence(false);
     }
   };
 
