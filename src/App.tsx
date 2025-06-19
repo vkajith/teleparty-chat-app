@@ -312,9 +312,14 @@ const App: React.FC = () => {
   );
 
   if(isLoading){
-    return <div className='app loading-screen'>
-      <div className="spinner"></div>
-      Loading...</div>
+    return (
+      <div className='app loading-screen'>
+        <div className="spinner"></div>
+        <div className="loading-text">
+          Connecting to chat<span className="loading-dots"></span>
+        </div>
+      </div>
+    )
   }
 
   return (
