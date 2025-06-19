@@ -28,14 +28,15 @@ const App: React.FC = () => {
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Callback to handle typing updates
-  const handleTypingUpdate = useCallback((data: TypingMessageData) => {
+  const handleTypingUpdate = (data: TypingMessageData) => {
     
     // Filter out current user from typing indicators using userId
     const currentUserId = webSocketService.getCurrentUserId();
     const filteredUsers = (data.usersTyping || []).filter(userId => userId !== currentUserId);
     setOthersTyping(filteredUsers.length > 0);
+    console.log('filteredUsers',data.usersTyping, filteredUsers,currentUserId);
     setTypingUsers(filteredUsers);
-  }, []);
+  }
 
   // Initialize WebSocket service once
   useEffect(() => {
