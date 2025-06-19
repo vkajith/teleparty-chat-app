@@ -60,13 +60,11 @@ class WebSocketService {
       try {
         this.client = new TelepartyClient({
           onConnectionReady: () => {
-            console.log('WebSocket connected');
             this.isConnected = true;
             this.callbacks?.onConnectionChange(true);
             resolve();
           },
           onClose: () => {
-            console.log('WebSocket disconnected');
             this.isConnected = false;
             this.callbacks?.onConnectionChange(false);
             this.scheduleReconnect();
@@ -330,12 +328,7 @@ class WebSocketService {
             break;
           
           case "userId":
-            console.log('userId', message.data);
-              console.log('currentUserId', this.currentUserId);
-              console.log('setting userId', (message.data as { userId: string }).userId);
-              this.currentUserId = (message.data as { userId: string }).userId;
-            
-            console.log('currentUserId', this.currentUserId);
+            this.currentUserId = (message.data as { userId: string }).userId;
             break;
             
           default:

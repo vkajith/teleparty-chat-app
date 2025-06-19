@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 import { webSocketService } from './services/webSocket';
-import { WebSocketCallbacks, TypingUser, AppError, TypingMessageData } from './types';
+import { WebSocketCallbacks, AppError, TypingMessageData } from './types';
 import { MessageList, SessionChatMessage } from 'teleparty-websocket-lib';
 import { ChatRoom } from './components/ChatRoom';
 import { AVATAR_ICONS } from './constants';
@@ -29,14 +29,13 @@ const App: React.FC = () => {
 
   // Callback to handle typing updates
   const handleTypingUpdate = useCallback((data: TypingMessageData) => {
-    console.log('Typing update received:', data);
     
     // Filter out current user from typing indicators using userId
     const currentUserId = webSocketService.getCurrentUserId();
     const filteredUsers = (data.usersTyping || []).filter(userId => userId !== currentUserId);
     setOthersTyping(filteredUsers.length > 0);
     setTypingUsers(filteredUsers);
-  }, [nickname]); // Need messages to map userIds to nicknames
+  }, []);
 
   // Initialize WebSocket service once
   useEffect(() => {
@@ -95,7 +94,6 @@ const App: React.FC = () => {
     };
     
     if (appState === 'initial') {
-      console.log('Trying to restore session VK');
       tryRestoreSession();
     }
     
@@ -224,7 +222,6 @@ const App: React.FC = () => {
 
   const getTypingMessage = (): string => {
     if (!othersTyping || typingUsers.length === 0) return '';
-    console.log('typingUsers', typingUsers);
     return 'Someone is typing...';
   };
 
