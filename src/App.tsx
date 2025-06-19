@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 import { webSocketService } from './services/webSocket';
-import { WebSocketCallbacks } from './types';
+import { WebSocketCallbacks, TypingUser, AppError, TypingMessageData } from './types';
 import { MessageList, SessionChatMessage } from 'teleparty-websocket-lib';
 import { ChatRoom } from './components/ChatRoom';
 import { AVATAR_ICONS } from './constants';
@@ -26,30 +26,53 @@ const App: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
+  // Callback to handle typing updates
+  const handleTypingUpdate = useCallback((data: TypingMessageData) => {
+    console.log('Typing update received:', data, 'Current nickname:', nickname);
+    
+    // Filter out current user from typing indicators
+    const filteredUsers = (data.usersTyping || []).filter((user: string | TypingUser) => {
+      // Handle both string usernames and user objects
+      if (typeof user === 'string') {
+        const isCurrentUser = user === nickname;
+        console.log(`Comparing string "${user}" with "${nickname}": ${isCurrentUser ? 'MATCH (filtering out)' : 'different'}`);
+        return !isCurrentUser;
+      } else if (user && typeof user === 'object') {
+        const isCurrentUser = user.userNickname === nickname || user.nickname === nickname;
+        console.log(`Comparing object`, user, `with "${nickname}": ${isCurrentUser ? 'MATCH (filtering out)' : 'different'}`);
+        return !isCurrentUser;
+      }
+      return true;
+    }).map((user: string | TypingUser) => {
+      // Convert all users to string format for display
+      return typeof user === 'string' ? user : (user.userNickname || user.nickname || 'Unknown');
+    });
+    
+    console.log('Filtered users:', filteredUsers);
+    setOthersTyping(filteredUsers.length > 0);
+    setTypingUsers(filteredUsers);
+  }, [nickname]);
+
+  // Initialize WebSocket service once
   useEffect(() => {
     const callbacks: WebSocketCallbacks = {
       onMessage: (message: SessionChatMessage | SessionChatMessage[]) => {
         if (Array.isArray(message)) {
           setMessages(message);
-          if (appState === 'joining') {
-            setAppState('in-room');
-            setCurrentRoomId(webSocketService.getCurrentRoomId());
-          }
+          setAppState('in-room');
+          setCurrentRoomId(webSocketService.getCurrentRoomId());
         } else {
           setMessages(prev => [...prev, message]);
         }
       },
       
-      onTypingUpdate: (data: any) => {
-        setOthersTyping(data.anyoneTyping);
-        setTypingUsers(data.usersTyping || []);
-      },
+      onTypingUpdate: handleTypingUpdate,
       
       onConnectionChange: (connected: boolean) => {
         setIsConnected(connected);
-        if (!connected && appState === 'in-room') {
-          setConnectionError('Connection lost. Please refresh the page to reconnect.');
-        } else if (connected) {
+        if (!connected) {
+          setConnectionError('Connection lost. Attempting to reconnect...');
+        } else {
           setConnectionError('');
         }
       },
@@ -67,15 +90,43 @@ const App: React.FC = () => {
         setConnectionError('');
       },
       
-      onError: (error: string) => {
-        setConnectionError(error);
+      onError: (error: string | AppError) => {
+        const errorMessage = typeof error === 'string' ? error : error.message;
+        setConnectionError(errorMessage);
         setAppState('initial');
       }
     };
     
     webSocketService.initialize(callbacks);
-    return () => webSocketService.disconnect();
-  }, []);
+    
+    // Try to restore session on initial load
+    const tryRestoreSession = async () => {
+      if (webSocketService.hasSavedSession()) {
+        const savedSession = webSocketService.getSavedSession();
+        if (savedSession) {
+          setNickname(savedSession.nickname);
+          setUserIcon(savedSession.userIcon);
+          setCurrentRoomId(savedSession.roomId);
+          setAppState('joining');
+          try {
+            await webSocketService.restoreSession();
+          } catch (error) {
+            setConnectionError(error instanceof Error ? error.message : 'Failed to restore session');
+            setAppState('initial');
+          }
+        }
+      }
+    };
+    
+    tryRestoreSession();
+    
+    return () => {
+      webSocketService.disconnect();
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, [handleTypingUpdate]); // Include handleTypingUpdate in dependencies
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -94,19 +145,25 @@ const App: React.FC = () => {
     return () => {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = undefined;
       }
     };
   }, [isTyping]);
 
   useEffect(() => {
+    let clearTypingTimeout: NodeJS.Timeout;
     if (othersTyping) {
-      const clearTypingTimeout = setTimeout(() => {
+      clearTypingTimeout = setTimeout(() => {
         setOthersTyping(false);
         setTypingUsers([]);
       }, 5000);
-      return () => clearTimeout(clearTypingTimeout);
     }
-  }, [othersTyping, typingUsers]);
+    return () => {
+      if (clearTypingTimeout) {
+        clearTimeout(clearTypingTimeout);
+      }
+    };
+  }, [othersTyping]);
 
   const handleCreateRoom = async () => {
     if (!nickname.trim()) return;
@@ -187,14 +244,10 @@ const App: React.FC = () => {
   };
 
   const getTypingMessage = (): string => {
-    if (!othersTyping) return '';
-    const otherTypingUsers = typingUsers.filter(nickname => 
-      nickname !== webSocketService.getCurrentNickname()
-    );
-    if (otherTypingUsers.length === 0) return '';
-    if (otherTypingUsers.length === 1) return `${otherTypingUsers[0]} is typing...`;
-    if (otherTypingUsers.length === 2) return `${otherTypingUsers[0]} and ${otherTypingUsers[1]} are typing...`;
-    return `${otherTypingUsers[0]} and ${otherTypingUsers.length - 1} others are typing...`;
+    if (!othersTyping || typingUsers.length === 0) return '';
+    if (typingUsers.length === 1) return `${typingUsers[0]} is typing...`;
+    if (typingUsers.length === 2) return `${typingUsers[0]} and ${typingUsers[1]} are typing...`;
+    return `${typingUsers[0]} and ${typingUsers.length - 1} others are typing...`;
   };
 
   const renderInitialScreen = () => (
