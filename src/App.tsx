@@ -190,20 +190,13 @@ const App: React.FC = () => {
     
     // Set typing status based on content
     if (newValue.trim().length > 0) {
-      if (!isTyping) {
-        setIsTyping(true);
-        webSocketService.setTypingPresence(true);
-      }
-      // Reset typing timeout
-      typingTimeoutRef.current = setTimeout(() => {
-        setIsTyping(false);
-        webSocketService.setTypingPresence(false);
-      }, 1500);
-    } else {
-      setIsTyping(false);
-      webSocketService.setTypingPresence(false);
-    }
+      setIsTyping(true);
+    }  
   };
+
+  useEffect(() => {
+    webSocketService.setTypingPresence(isTyping);
+  }, [isTyping]);
 
   const handleReturnToLobby = () => {
     webSocketService.logout(); // This will clear session and disconnect
