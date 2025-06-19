@@ -257,7 +257,7 @@ class WebSocketService {
    */
   setTypingPresence(typing: boolean): void {
     if (this.client && this.isConnected && this.currentRoomId) {
-      this.client.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, { typing });
+      this.client.sendMessage(SocketMessageTypes.SET_TYPING_PRESENCE, { typing: typing });
     }
   }
 
